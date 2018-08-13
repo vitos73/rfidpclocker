@@ -10,6 +10,9 @@
  * Reader - https://arduino.ua/prod2079-rfid-modyl-rc522-ot-robotdyn
  * Board  - https://arduino.ua/prod661-arduino-pro-micro-s-konnektorami
  * 
+ * Important note: This script works only with boards based on Atmega32U4!
+ * otherwise, you can't send any event to pc as HID!
+ * 
  * Typical pin layout used:
  * -----------------------------------------------------------------------------------------
  *             MFRC522      Arduino       Arduino   Arduino    Arduino          Arduino
