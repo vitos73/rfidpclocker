@@ -1,30 +1,14 @@
 
-/*
+/* ----------------------------------------------------------------------------
+ * RFID PC Locker
+ * origin: https://github.com/vitos73/rfidpclocker
+ * Feel free to use and modify under GNU GPL v3
+ * (c)2018  Vitold Buttermaan
  * ----------------------------------------------------------------------------
- * This is a MFRC522 library example; see https://github.com/miguelbalboa/rfid
- * for further details and other examples.
- * 
- * NOTE: The library file MFRC522.h has a lot of useful info. Please read it.
- * 
- * Released into the public domain.
- * ----------------------------------------------------------------------------
- * Example sketch/program showing how to read data from a PICC (that is: a RFID
- * Tag or Card) using a MFRC522 based RFID Reader on the Arduino SPI interface.
- * 
- * When the Arduino and the MFRC522 module are connected (see the pin layout
- * below), load this sketch into Arduino IDE then verify/compile and upload it.
- * To see the output: use Tools, Serial Monitor of the IDE (hit Ctrl+Shft+M).
- * When you present a PICC (that is: a RFID Tag or Card) at reading distance
- * of the MFRC522 Reader/PCD, the serial output will show the ID/UID, type and
- * any data blocks it can read. Note: you may see "Timeout in communication"
- * messages when removing the PICC from reading distance too early.
- * 
- * If your reader supports it, this sketch/program will read all the PICCs
- * presented (that is: multiple tag reading). So if you stack two or more
- * PICCs on top of each other and present them to the reader, it will first
- * output all details of the first and then the next PICC. Note that this
- * may take some time as all data blocks are dumped, so keep the PICCs at
- * reading distance until complete.
+ * This script based on a MFRC522 library ; see https://github.com/miguelbalboa/rfid
+ * Used hardware:
+ * Reader - https://arduino.ua/prod2079-rfid-modyl-rc522-ot-robotdyn
+ * Board  - https://arduino.ua/prod661-arduino-pro-micro-s-konnektorami
  * 
  * Typical pin layout used:
  * -----------------------------------------------------------------------------------------
@@ -32,7 +16,7 @@
  *             Reader/PCD   Uno           Mega      Nano v3    Leonardo/Micro   Pro Micro
  * Signal      Pin          Pin           Pin       Pin        Pin              Pin
  * -----------------------------------------------------------------------------------------
- * RST/Reset   RST          9             5         D9         RESET/ICSP-5     RST
+ * RST/Reset   RST          9             5         D9         RESET/ICSP-5     9
  * SPI SS      SDA(SS)      10            53        D10        10               10
  * SPI MOSI    MOSI         11 / ICSP-4   51        D11        ICSP-4           16
  * SPI MISO    MISO         12 / ICSP-1   50        D12        ICSP-1           14
@@ -43,92 +27,58 @@
 #include <MFRC522.h>
 #include <Keyboard.h>
 
-#define RST_PIN		9		// 
-#define SS_PIN		10		//
+#define RST_PIN		9	 // connect reader reset to 9 pin (not for reset on arduino board). MFRC522 library use reset to wakeup the reader.
+#define SS_PIN		10 //
 
-MFRC522 mfrc522(SS_PIN, RST_PIN);   // Create MFRC522 instance
-int iteration_without_card = 0;
-int max_iteration_without_card = 6;
+MFRC522 mfrc522(SS_PIN, RST_PIN);        // Create MFRC522 instance
+uint8_t iteration_without_card = 0;      // init value for iteration counter
+uint8_t max_iteration_without_card = 6;  // this value is for protection from false positive - sometimes reader losts communication with card
+bool card_present = false;
 
 //*****************************************************************************************//
 void setup() {
-//  Serial.begin(115200);  
-//  while (!Serial);
   Keyboard.begin();
-  delay(500);// Initialize serial communications with the PC
+  delay(500);// delay for init
   SPI.begin();
   delay(500); // Init SPI bus
-  mfrc522.PCD_Init();                                              // Init MFRC522 card
+  mfrc522.PCD_Init(); // Init MFRC522 card
 
 }
 
 void logout()
 {
-Keyboard.press(KEY_LEFT_CTRL);
-Keyboard.press(KEY_LEFT_ALT);
-Keyboard.print("l");
-delay(100);
-Keyboard.releaseAll();
-delay(1000);
-  
+  // send key kombination for lock PC - this for Ubuntu (ctrl+alt+l)
+  Keyboard.press(KEY_LEFT_CTRL);
+  Keyboard.press(KEY_LEFT_ALT);
+  Keyboard.print("l");
+  delay(100);
+  Keyboard.releaseAll();
+  delay(1000);  
 }
 
-uint8_t iteration = 0;
-uint8_t buf[10]= {};
-MFRC522::Uid id;
-MFRC522::Uid id2;
-bool is_card_present = false;
-//*****************************************************************************************//
 
-void cpid(MFRC522::Uid *id){
-  memset(id, 0, sizeof(MFRC522::Uid));
-  memcpy(id->uidByte, mfrc522.uid.uidByte, mfrc522.uid.size);
-  id->size = mfrc522.uid.size;
-  id->sak = mfrc522.uid.sak;
-}
-
-bool cmpid(MFRC522::Uid *id1, MFRC522::Uid *id2){
-  return memcmp(id1, id2, sizeof(MFRC522::Uid));
-}
-
-void deregister_card(){
-  is_card_present = false;
-  memset(&id,0, sizeof(id));
-}
-
-uint8_t control = 0x00;
-int card_present = 0 ;
 void loop() {
- 
-//mfrc522.PICC_HaltA();
-//mfrc522.PCD_StopCrypto1();  
-deregister_card();
-delay(500); 
-//Serial.print("Iteration:");
-//Serial.println(iteration,HEX);
-iteration++;
 
+    delay(500); // you can change this value to detetect card removal faster 
 
-if ( !mfrc522.PICC_IsNewCardPresent()) {
- //  Serial.println("Card not present---1!");
-   if( card_present != 0) { 
-   iteration_without_card++;
-   }
-   if( card_present != 0 && iteration_without_card > max_iteration_without_card)
-   {    
-  //  Serial.println("Event: card removed");
+    if ( !mfrc522.PICC_IsNewCardPresent()) {
+           if( card_present) { 
+              iteration_without_card++;
+           }
+           if( card_present && iteration_without_card > max_iteration_without_card) {
+              // we can't see card long time    
+              iteration_without_card=0;
+              card_present = false; 
+              logout(); // sends logout event to PC
+           }
+           return;
+      }
+    if ( !mfrc522.PICC_ReadCardSerial()) {
+        return;
+      }
+
+// this lines reached only if reader see any card on it 
+
+    card_present = true;
     iteration_without_card=0;
-    card_present = 0; 
-    logout();
-   }
-   return;
-  }
-  if ( !mfrc522.PICC_ReadCardSerial()) {
- //   Serial.println("Card not present---2!");
-    return;
-  }
- // mfrc522.PICC_HaltA();
- // mfrc522.PCD_StopCrypto1();  
-  card_present = 1;
-  iteration_without_card=0;
 }
